@@ -5,8 +5,14 @@ async function call(path, body, method = 'POST') {
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`)
+  let data = null
+  try {
+    data = await res.json()
+  } catch {
+    if (!res.ok) throw new Error(`Request failed (${res.status})`)
+    throw new Error('Invalid server response.')
+  }
+  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
   return data
 }
 export const signup = (b) => call('signup', b)

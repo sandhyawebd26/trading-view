@@ -7,7 +7,7 @@ export default function App() {
   const [user, setUser] = useState(undefined) // undefined = checking session, null = signed out
 
   useEffect(() => {
-    me().then((r) => setUser(r.user)).catch(() => setUser(null))
+    me().then((r) => setUser(r?.user ?? null)).catch(() => setUser(null))
   }, [])
 
   if (user === undefined) return <div className="boot">Loading…</div>

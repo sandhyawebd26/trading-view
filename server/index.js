@@ -4,12 +4,19 @@ import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import Database from 'better-sqlite3'
 import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const PORT = process.env.API_PORT || 4317
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const PORT = Number(process.env.PORT || process.env.API_PORT || 4317)
+const HOST = process.env.HOST || '0.0.0.0'
 const SESSION_DAYS = 7
 const COOKIE = 'sid'
 
-const db = new Database(process.env.DB_PATH || 'data/app.db')
+const dbPath = path.resolve(process.env.DB_PATH || path.join(__dirname, '..', 'data', 'app.db'))
+fs.mkdirSync(path.dirname(dbPath), { recursive: true })
+const db = new Database(dbPath)
 db.pragma('journal_mode = WAL')
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -28,12 +35,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name })
 
-function startSession(res, userId) {
+const isSecureCookie = (req) => process.env.COOKIE_SECURE === 'true' || req.secure
+
+function startSession(req, res, userId) {
   const token = crypto.randomBytes(32).toString('hex')
   const expires = Date.now() + SESSION_DAYS * 864e5
   db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?,?,?)').run(sha(token), userId, expires)
   res.cookie(COOKIE, token, {
-    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: SESSION_DAYS * 864e5, path: '/',
+    httpOnly: true, sameSite: 'lax', secure: isSecureCookie(req), maxAge: SESSION_DAYS * 864e5, path: '/',
   })
 }
 
@@ -49,6 +58,7 @@ function currentUser(req) {
 }
 
 const app = express()
+app.set('trust proxy', 1)
 app.disable('x-powered-by')
 app.use(express.json({ limit: '10kb' }))
 app.use(cookieParser())
@@ -70,7 +80,7 @@ app.post('/api/auth/signup', limiter, async (req, res) => {
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) return res.status(409).json({ error: 'An account with this email already exists.' })
   const hash = await bcrypt.hash(password, 12)
   const info = db.prepare('INSERT INTO users (email, name, password_hash) VALUES (?,?,?)').run(email, name, hash)
-  startSession(res, info.lastInsertRowid)
+  startSession(req, res, info.lastInsertRowid)
   res.status(201).json({ user: { id: Number(info.lastInsertRowid), email, name } })
 })
 
@@ -80,14 +90,14 @@ app.post('/api/auth/login', limiter, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email)
   const ok = await bcrypt.compare(password, user?.password_hash ?? DUMMY)
   if (!user || !ok) return res.status(401).json({ error: 'Incorrect email or password.' })
-  startSession(res, user.id)
+  startSession(req, res, user.id)
   res.json({ user: publicUser(user) })
 })
 
 app.post('/api/auth/logout', (req, res) => {
   const token = req.cookies[COOKIE]
   if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha(token))
-  res.clearCookie(COOKIE, { path: '/' })
+  res.clearCookie(COOKIE, { httpOnly: true, sameSite: 'lax', secure: isSecureCookie(req), path: '/' })
   res.json({ ok: true })
 })
 
@@ -97,7 +107,24 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ user: publicUser(user) })
 })
 
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true })
+})
+
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Not found.' })
+})
+
+const distDir = path.resolve(__dirname, '..', 'dist')
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir))
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+    res.sendFile(path.join(distDir, 'index.html'))
+  })
+}
+
 // Periodic cleanup of expired sessions.
 setInterval(() => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now()), 3600e3).unref()
 
-app.listen(PORT, '127.0.0.1', () => console.log(`API listening on http://127.0.0.1:${PORT}`))
+app.listen(PORT, HOST, () => console.log(`Server listening on http://${HOST}:${PORT}`))
