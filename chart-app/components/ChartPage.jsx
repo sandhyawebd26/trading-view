@@ -44,6 +44,11 @@ const loadEntries = () => {
 }
 const persistEntries = (list) => { try { localStorage.setItem(STORE_V2, JSON.stringify(list.map(({ key, source }) => ({ key, source })))) } catch { /* ignore */ } }
 const pluginKeyOf = (pid) => pluginKey({ kind: 'indicator', plugin: { descriptor: { id: pid } } })
+// Take an indicator off the chart's Indicators list. The library has no call for it, so this also clears its
+// internal registry (guarded: if a library update changes that, the entry just stays listed until a reload).
+const forgetPlugin = (c, pid) => {
+  try { c.plugins.unregister(pluginKeyOf(pid)); c.indicatorEngine?.registry?.delete(pid) } catch { /* ignore */ }
+}
 
 export default function ChartPage({ user, onLogout }) {
   const el = useRef(null)
@@ -301,7 +306,7 @@ export default function ChartPage({ user, onLogout }) {
         const old = key
         const target = `s${same.id}`
         const rt = chart.current && runtime.current.get(old)
-        if (rt) detach(chart.current, old)
+        if (rt) { detach(chart.current, old); forgetPlugin(chart.current, pluginIdOf(old)) }
         commit((list) => list.filter((e) => e.key !== old && e.key !== target))
         await putOnChart({ key: target, source: src })
         setActiveId(same.id)
@@ -327,7 +332,7 @@ export default function ChartPage({ user, onLogout }) {
       // The script on the chart becomes the saved one, so it is listed and shown under its saved name.
       const oldKey = savePrompt.key
       const newKey = `s${indicator.id}`
-      if (chart.current && oldKey !== newKey) detach(chart.current, oldKey)
+      if (chart.current && oldKey !== newKey) { detach(chart.current, oldKey); forgetPlugin(chart.current, pluginIdOf(oldKey)) }
       commit((list) => list.filter((e) => e.key !== oldKey || oldKey === newKey))
       await putOnChart({ key: newKey, source: savePrompt.source })
       setActiveId(indicator.id)
@@ -370,11 +375,26 @@ export default function ChartPage({ user, onLogout }) {
   // Take one script off the chart and keep it off after a reload.
   function removeFromChart(key) {
     const name = entriesRef.current.find((e) => e.key === key)?.name
-    if (chart.current) { detach(chart.current, key); chart.current.requestRender?.() }
+    const c = chart.current
+    if (c) {
+      detach(c, key)
+      // A saved script goes back to its stand-in in the list; an unsaved one leaves the list.
+      const item = savedIdOf(key) != null ? savedRef.current.find((i) => i.id === savedIdOf(key)) : null
+      if (item) { forgetPlugin(c, pluginIdOf(key)); c.registerIndicator(placeholderIndicator(pluginIdOf(key), item.name)); registered.current.add(pluginIdOf(key)) }
+      else forgetPlugin(c, pluginIdOf(key))
+      c.requestRender?.()
+    }
     commit((list) => list.filter((e) => e.key !== key))
     flash(`Removed ${name ? `“${name}”` : 'the script'} from the chart.`)
   }
   userRemoveRef.current = removeFromChart
+
+  // Offer to keep an unsaved script that is already on the chart (the prompt after Add to chart is easy to miss).
+  function saveEntry(e) {
+    setDraft(e.source); setScriptError(''); setActiveId(null); setSaveError('')
+    setSavePrompt({ name: e.name || nameFromSource(e.source), source: e.source, key: e.key })
+    setEditing(true)
+  }
 
   function editEntry(e) {
     setDraft(e.source); setScriptError(''); setSavePrompt(null)
@@ -407,7 +427,8 @@ export default function ChartPage({ user, onLogout }) {
           {entries.map((e) => (
             <span className="chip" key={`${e.key}-${stamps[e.key] ?? 0}`}>
               <span className="chip-dot" aria-hidden="true" />
-              <span>On the chart: <strong>{e.name || nameFromSource(e.source)}</strong></span>
+              <span>On the chart: <strong>{e.name || nameFromSource(e.source)}</strong>{e.key.startsWith('d_') && <em className="chip-unsaved"> (not saved)</em>}</span>
+              {e.key.startsWith('d_') && <button onClick={() => saveEntry(e)}>Save</button>}
               <button className="ghost" onClick={() => editEntry(e)}>Edit</button>
               <button className="ghost" onClick={() => removeFromChart(e.key)} aria-label={`Remove ${e.name || nameFromSource(e.source)} from the chart`}>Remove</button>
             </span>
