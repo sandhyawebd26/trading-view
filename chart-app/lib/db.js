@@ -8,9 +8,12 @@ const dbPath = path.resolve(process.env.DB_PATH || path.join(process.cwd(), 'dat
 const g = globalThis
 if (!g.__chartDb) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true })
-  const db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
-  db.exec(`
+  g.__chartDb = new Database(dbPath)
+  g.__chartDb.pragma('journal_mode = WAL')
+}
+export const db = g.__chartDb
+// Tables are created if missing every time this module loads, so adding a table never needs a manual step.
+db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
@@ -23,7 +26,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at INTEGER NOT NULL,
   revoked_reason TEXT
+);
+CREATE TABLE IF NOT EXISTS indicators (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, name)
 );`)
-  g.__chartDb = db
-}
-export const db = g.__chartDb

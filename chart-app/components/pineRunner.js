@@ -2,6 +2,9 @@ import { PineTS } from 'pinets'
 import { defineIndicator } from '@tradecanvas/chart'
 import { extractDrawings } from './pineDrawings.js'
 
+// Where custom indicators are listed in the chart's Indicators dialog.
+export const CUSTOM_GROUP = { id: 'custom', label: 'My indicators' }
+
 const DEFAULT_COLORS = ['#4f6df5', '#f5c542', '#3fb950', '#e5534b', '#a371f7']
 
 // Pine gives colours as #RRGGBB or #RRGGBBAA. Split into the solid colour and its opacity (0–1).
@@ -83,7 +86,7 @@ export async function runPine(source, bars) {
 }
 
 // Wrap precomputed Pine output as a TradeCanvas indicator plugin, using the script's own colours.
-export function toIndicator(id, result) {
+export function toIndicator(id, result, listName) {
   const keys = Object.keys(result.lines)
   const styleColors = [...result.colors]
   const fills = result.fills.map((f) => {
@@ -96,13 +99,30 @@ export function toIndicator(id, result) {
   })
   const plugin = defineIndicator({
     id,
-    name: result.title,
-    shortName: result.title,
+    name: listName || result.title, // the name in the Indicators dialog
+    shortName: result.title,         // the name in the chart legend
+    category: CUSTOM_GROUP,
     placement: result.overlay ? 'overlay' : 'panel',
     plots: keys.map((k, i) => ({ key: safeKey(k), title: k, color: i })),
     fills,
     calculate: () => Object.fromEntries(keys.map((k) => [safeKey(k), result.lines[k]])),
   })
   plugin.descriptor.defaultStyle = { colors: styleColors }
+  return plugin
+}
+
+// A stand-in listed in the Indicators dialog for a saved script. Picking it there is caught by the page,
+// which swaps it for the real script (Pine runs asynchronously, a chart indicator must answer at once).
+export function placeholderIndicator(id, name) {
+  const plugin = defineIndicator({
+    id,
+    name,
+    shortName: name,
+    category: CUSTOM_GROUP,
+    placement: 'overlay',
+    plots: [{ key: 'v', title: name, color: 0 }],
+    calculate: (data) => ({ v: Array.from({ length: data?.length ?? 0 }, () => null) }),
+  })
+  plugin.descriptor.defaultStyle = { colors: ['#8b93a7'] }
   return plugin
 }

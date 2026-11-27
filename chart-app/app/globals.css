@@ -126,3 +126,20 @@ button.ghost:hover { background: var(--panel); }
   .authx-panel { align-items: start; padding-top: 64px; }
   .authx-theme { top: 12px; right: 12px; }
 }
+
+/* Save-as-custom-indicator prompt and note in the Pine editor */
+.pine-save { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+.pine-save input { min-width: 160px; flex: 0 1 240px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line2); background: var(--bg); color: var(--fg); font: inherit; }
+.pine-save input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pine-save-error { color: var(--down); }
+.pine-note { color: var(--up); font-size: 12.5px; }
+
+/* "On the chart" bar: shows which Pine script is drawn, with Edit and Remove. */
+.pine-chips { display: flex; flex-wrap: wrap; gap: 6px 8px; padding: 6px 16px; border-bottom: 1px solid var(--line); }
+.pine-chips .chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line2); font-size: 13px; }
+.pine-chips .chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--up); }
+.pine-chips .chip button { padding: 3px 10px; border-radius: 999px; font-size: 12.5px; }
+@media (prefers-reduced-motion: no-preference) {
+  .pine-chips .chip { animation: chip-in 1.4s ease-out; }
+}
+@keyframes chip-in { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--up) 70%, transparent); } 40% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--up) 0%, transparent); background: color-mix(in srgb, var(--up) 22%, var(--panel)); } 100% { box-shadow: 0 0 0 0 transparent; } }
