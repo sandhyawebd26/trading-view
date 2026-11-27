@@ -1,0 +1,28 @@
+{
+  "name": "chart-app",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "dev": "next dev -p 3010",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3010}"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.10.0",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/lint": "^6.9.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.38.0",
+    "@lezer/highlight": "^1.2.0",
+    "@tradecanvas/chart": "^3.0.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.11.1",
+    "next": "^15.5.0",
+    "pinets": "^0.13.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
