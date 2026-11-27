@@ -12,7 +12,12 @@ async function call(path, body, method = 'POST') {
     if (!res.ok) throw new Error(`Request failed (${res.status})`)
     throw new Error('Invalid server response.')
   }
-  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
+  if (!res.ok) {
+    const err = new Error(data?.error || `Request failed (${res.status})`)
+    err.status = res.status
+    err.reason = data?.reason
+    throw err
+  }
   return data
 }
 export const signup = (b) => call('signup', b)

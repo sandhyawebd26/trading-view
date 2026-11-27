@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { login, signup } from './api.js'
 
-export default function AuthPage({ onAuth }) {
+export default function AuthPage({ onAuth, notice }) {
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [error, setError] = useState('')
@@ -27,6 +27,7 @@ export default function AuthPage({ onAuth }) {
     <div className="auth">
       <form className="card" onSubmit={submit}>
         <h1>{isSignup ? 'Create your account' : 'Welcome back'}</h1>
+        {notice && <div className="notice" role="status">{notice}</div>}
         <p className="muted">{isSignup ? 'Sign up to open the live chart.' : 'Sign in to open the live chart.'}</p>
         {isSignup && (
           <label>Name

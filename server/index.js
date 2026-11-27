@@ -9,7 +9,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const PORT = Number(process.env.PORT || process.env.API_PORT || 4317)
+const PORT = Number(process.env.API_PORT || process.env.PORT || 4317)
 const HOST = process.env.HOST || '0.0.0.0'
 const SESSION_DAYS = 7
 const COOKIE = 'sid'
@@ -31,13 +31,19 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at INTEGER NOT NULL
 );`)
+// Migration: a session replaced by a newer login is kept (revoked) so its device can be told why.
+if (!db.prepare("PRAGMA table_info(sessions)").all().some((c) => c.name === 'revoked_reason')) {
+  db.exec('ALTER TABLE sessions ADD COLUMN revoked_reason TEXT')
+}
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex')
 const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name })
 
 const isSecureCookie = (req) => process.env.COOKIE_SECURE === 'true' || req.secure
 
+// One active session per account: a new login signs out every other device.
 function startSession(req, res, userId) {
+  db.prepare("UPDATE sessions SET revoked_reason = 'other_device' WHERE user_id = ? AND revoked_reason IS NULL").run(userId)
   const token = crypto.randomBytes(32).toString('hex')
   const expires = Date.now() + SESSION_DAYS * 864e5
   db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?,?,?)').run(sha(token), userId, expires)
@@ -46,15 +52,17 @@ function startSession(req, res, userId) {
   })
 }
 
-function currentUser(req) {
+// -> { user } for a valid session, otherwise { reason } ('other_device' | 'none').
+function sessionStatus(req) {
   const token = req.cookies[COOKIE]
-  if (!token) return null
+  if (!token) return { reason: 'none' }
   const row = db.prepare(
-    'SELECT u.* , s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?',
+    'SELECT u.*, s.expires_at, s.revoked_reason FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?',
   ).get(sha(token))
-  if (!row) return null
-  if (row.expires_at < Date.now()) { db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha(token)); return null }
-  return row
+  if (!row) return { reason: 'none' }
+  if (row.expires_at < Date.now()) { db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha(token)); return { reason: 'none' } }
+  if (row.revoked_reason) return { reason: row.revoked_reason }
+  return { user: row }
 }
 
 const app = express()
@@ -102,8 +110,13 @@ app.post('/api/auth/logout', (req, res) => {
 })
 
 app.get('/api/auth/me', (req, res) => {
-  const user = currentUser(req)
-  if (!user) return res.status(401).json({ error: 'Not signed in.' })
+  const { user, reason } = sessionStatus(req)
+  if (!user) {
+    return res.status(401).json({
+      reason,
+      error: reason === 'other_device' ? 'You were signed out because your account was signed in on another device.' : 'Not signed in.',
+    })
+  }
   res.json({ user: publicUser(user) })
 })
 
